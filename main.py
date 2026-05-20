@@ -1,19 +1,47 @@
-from fastapi import FastAPI, HTTPException
-from datetime import datetime
-from jhora.panchanga import drik
+from fastapi import FastAPI, HTTPException, Query
 import swisseph as swe
-import math
+from datetime import datetime
+import pytz
 
-app = FastAPI()
+app = FastAPI(
+    title="Advanced Jyotish API",
+    description="Professional Astrology API using Swiss Ephemeris",
+    version="3.0.0"
+)
 
-# =========================
-# SIDEREAL MODE (LAHIRI)
-# =========================
-swe.set_sid_mode(swe.SIDM_LAHIRI)
+# =====================================
+# ZODIAC SIGNS
+# =====================================
+SIGNS = [
+    "Aries",
+    "Taurus",
+    "Gemini",
+    "Cancer",
+    "Leo",
+    "Virgo",
+    "Libra",
+    "Scorpio",
+    "Sagittarius",
+    "Capricorn",
+    "Aquarius",
+    "Pisces"
+]
 
-# =========================
+# =====================================
+# COMBUSTION LIMITS
+# =====================================
+COMBUST_LIMITS = {
+    swe.MOON: 12,
+    swe.MARS: 17,
+    swe.MERCURY: 14,
+    swe.JUPITER: 11,
+    swe.VENUS: 10,
+    swe.SATURN: 15
+}
+
+# =====================================
 # PLANETS
-# =========================
+# =====================================
 PLANETS = {
     "Sun": swe.SUN,
     "Moon": swe.MOON,
@@ -22,307 +50,367 @@ PLANETS = {
     "Jupiter": swe.JUPITER,
     "Venus": swe.VENUS,
     "Saturn": swe.SATURN,
+    "Rahu": swe.TRUE_NODE,
     "Uranus": swe.URANUS,
     "Neptune": swe.NEPTUNE,
     "Pluto": swe.PLUTO
 }
 
-# =========================
-# ZODIAC SIGNS
-# =========================
-SIGNS = {
-    1: "Aries",
-    2: "Taurus",
-    3: "Gemini",
-    4: "Cancer",
-    5: "Leo",
-    6: "Virgo",
-    7: "Libra",
-    8: "Scorpio",
-    9: "Sagittarius",
-    10: "Capricorn",
-    11: "Aquarius",
-    12: "Pisces"
-}
+# =====================================
+# FORMAT DEGREE
+# =====================================
+def format_degree(decimal_degree):
+    degree = int(decimal_degree)
 
-# =========================
-# NAKSHATRAS
-# =========================
-NAKSHATRAS = [
-    "Ashwini", "Bharani", "Krittika",
-    "Rohini", "Mrigashira", "Ardra",
-    "Punarvasu", "Pushya", "Ashlesha",
-    "Magha", "Purva Phalguni", "Uttara Phalguni",
-    "Hasta", "Chitra", "Swati",
-    "Vishakha", "Anuradha", "Jyeshtha",
-    "Mula", "Purva Ashadha", "Uttara Ashadha",
-    "Shravana", "Dhanishta", "Shatabhisha",
-    "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
-]
+    minutes = int((decimal_degree - degree) * 60)
 
-# =========================
-# DEGREE FORMAT
-# =========================
-def decimal_to_dms(degree):
-    d = int(degree)
-    m_float = (degree - d) * 60
-    m = int(m_float)
-    s = round((m_float - m) * 60, 2)
-    return f"{d}° {m}' {s}\""
+    seconds = round(
+        ((((decimal_degree - degree) * 60) - minutes) * 60),
+        2
+    )
 
-# =========================
-# NAKSHATRA
-# =========================
-def get_nakshatra(longitude):
-    index = int(longitude / (360 / 27))
-    return NAKSHATRAS[index]
+    return f'{degree}° {minutes}\' {seconds}"'
 
-# =========================
-# COMBUST CHECK
-# =========================
-def is_combust(planet, planet_longitude, sun_longitude):
 
-    if planet == "Sun":
-        return False
+# =====================================
+# HOUSE CALCULATOR
+# =====================================
+def get_house(planet_lon, asc_lon):
 
-    difference = abs(planet_longitude - sun_longitude)
+    asc_sign = int(asc_lon / 30)
 
-    if difference > 180:
-        difference = 360 - difference
+    planet_sign = int(planet_lon / 30)
 
-    combust_limits = {
-        "Moon": 12,
-        "Mars": 17,
-        "Mercury": 14,
-        "Jupiter": 11,
-        "Venus": 10,
-        "Saturn": 15
-    }
+    house = (planet_sign - asc_sign) + 1
 
-    limit = combust_limits.get(planet, 8)
+    if house <= 0:
+        house += 12
 
-    return difference < limit
+    return house
 
-# =========================
-# VARGOTTAMA
-# =========================
-def check_vargottama(longitude, sign_no):
 
-    degree_in_sign = longitude % 30
+# =====================================
+# API ENDPOINT
+# =====================================
+@app.get("/api/v1/kundali")
+def get_kundali(
 
-    navamsa_sign = int((degree_in_sign / (30 / 9))) + 1
+    dob: str = Query(
+        ...,
+        description="Date of Birth in DD-MM-YYYY format",
+        examples=["15-08-2002"]
+    ),
 
-    return sign_no == navamsa_sign
+    birth_time: str = Query(
+        ...,
+        description="Birth Time in HH:MM AM/PM OR HH:MM:SS",
+        examples=["1:35 AM"]
+    ),
 
-# =========================
-# API
-# =========================
-@app.get("/")
-def home():
-    return {
-        "message": "Astrology API Running Successfully"
-    }
+    latitude: float = Query(
+        ...,
+        description="Latitude of Birth Place",
+        examples=[26.8467]
+    ),
 
-# =========================
-# PLANETARY API
-# =========================
-@app.get("/planetary-positions")
-def planetary_positions(
-    dob: str,
-    tob: str,
-    latitude: float,
-    longitude: float
+    longitude: float = Query(
+        ...,
+        description="Longitude of Birth Place",
+        examples=[80.9462]
+    ),
+
+    timezone: str = Query(
+        default="Asia/Kolkata",
+        description="Timezone",
+        examples=["Asia/Kolkata"]
+    )
+
 ):
-
     try:
 
-        # =========================
-        # DATE PARSE
-        # =========================
-        birth_date = datetime.strptime(dob, "%d-%m-%Y")
+        # =====================================
+        # PARSE DATE
+        # =====================================
+        birth_date = datetime.strptime(
+            dob,
+            "%d-%m-%Y"
+        )
 
-        # =========================
-        # TIME PARSE
-        # =========================
-        birth_time = datetime.strptime(tob, "%I:%M %p")
+        # =====================================
+        # PARSE TIME
+        # =====================================
+        try:
 
-        year = birth_date.year
-        month = birth_date.month
-        day = birth_date.day
+            parsed_time = datetime.strptime(
+                birth_time,
+                "%I:%M %p"
+            )
 
-        hour = birth_time.hour
-        minute = birth_time.minute
+        except:
 
-        decimal_hour = hour + (minute / 60)
+            parsed_time = datetime.strptime(
+                birth_time,
+                "%H:%M:%S"
+            )
 
-        # =========================
+        # =====================================
+        # COMBINE DATE + TIME
+        # =====================================
+        local_datetime = datetime(
+            birth_date.year,
+            birth_date.month,
+            birth_date.day,
+            parsed_time.hour,
+            parsed_time.minute,
+            parsed_time.second
+        )
+
+        # =====================================
+        # TIMEZONE
+        # =====================================
+        local_timezone = pytz.timezone(timezone)
+
+        local_datetime = local_timezone.localize(local_datetime)
+
+        utc_datetime = local_datetime.astimezone(pytz.utc)
+
+        # =====================================
         # JULIAN DAY
-        # =========================
+        # =====================================
         jd = swe.julday(
-            year,
-            month,
-            day,
-            decimal_hour
+            utc_datetime.year,
+            utc_datetime.month,
+            utc_datetime.day,
+            utc_datetime.hour +
+            utc_datetime.minute / 60 +
+            utc_datetime.second / 3600
         )
 
-        # =========================
-        # SUNRISE / SUNSET
-        # =========================
-        place = drik.Place(
-            "Custom Place",
-            latitude,
-            longitude,
-            5.5
-        )
+        # =====================================
+        # LAHIRI AYANAMSA
+        # =====================================
+        swe.set_sid_mode(swe.SIDM_LAHIRI)
 
-        date_obj = drik.Date(year, month, day)
-
-        sunrise = drik.sunrise(jd, place)
-        sunset = drik.sunset(jd, place)
-
-        # =========================
+        # =====================================
         # ASCENDANT
-        # =========================
-        houses = swe.houses(
+        # =====================================
+        houses, ascmc = swe.houses_ex(
             jd,
             latitude,
-            longitude
+            longitude,
+            b'P',
+            swe.FLG_SIDEREAL
         )
 
-        asc_longitude = houses[1][0]
+        ascendant_longitude = ascmc[0]
 
-        asc_sign_no = int(asc_longitude / 30) + 1
+        asc_sign_no = int(ascendant_longitude / 30) + 1
 
-        asc_sign = SIGNS[asc_sign_no]
+        asc_sign = SIGNS[asc_sign_no - 1]
 
-        # =========================
-        # SUN LONGITUDE
-        # =========================
-        sun_calc = swe.calc_ut(jd, swe.SUN)
+        # =====================================
+        # SUN POSITION
+        # =====================================
+        sun_result, _ = swe.calc_ut(
+            jd,
+            swe.SUN,
+            swe.FLG_SIDEREAL | swe.FLG_SPEED
+        )
 
-        sun_longitude = sun_calc[0][0]
+        sun_longitude = sun_result[0]
 
-        results = []
+        # =====================================
+        # PLANETARY DATA
+        # =====================================
+        planetary_data = {}
 
-        # =========================
-        # PLANET LOOP
-        # =========================
         for planet_name, planet_code in PLANETS.items():
 
-            planet_calc = swe.calc_ut(jd, planet_code)
+            result, _ = swe.calc_ut(
+                jd,
+                planet_code,
+                swe.FLG_SIDEREAL | swe.FLG_SPEED
+            )
 
-            planet_data = planet_calc[0]
+            longitude_value = result[0]
 
-            longitude_value = planet_data[0]
+            speed = result[3]
 
-            latitude_value = planet_data[1]
+            distance_au = result[2]
 
-            distance = planet_data[2]
-
-            speed = planet_data[3]
-
-            # =========================
-            # SIGN
-            # =========================
             sign_no = int(longitude_value / 30) + 1
 
-            sign_name = SIGNS[sign_no]
+            sign_name = SIGNS[sign_no - 1]
 
             degree_in_sign = longitude_value % 30
 
-            # =========================
+            # =====================================
             # RETROGRADE
-            # =========================
+            # =====================================
             retrograde = speed < 0
 
-            # =========================
-            # NAKSHATRA
-            # =========================
-            nakshatra = get_nakshatra(longitude_value)
-
-            # =========================
+            # =====================================
             # COMBUST
-            # =========================
-            combust = is_combust(
-                planet_name,
+            # =====================================
+            combust = False
+
+            if planet_code in COMBUST_LIMITS:
+
+                angular_distance = abs(
+                    longitude_value - sun_longitude
+                )
+
+                if angular_distance > 180:
+                    angular_distance = 360 - angular_distance
+
+                combust = (
+                    angular_distance <=
+                    COMBUST_LIMITS[planet_code]
+                )
+
+            # =====================================
+            # HOUSE
+            # =====================================
+            house = get_house(
                 longitude_value,
-                sun_longitude
+                ascendant_longitude
             )
 
-            # =========================
-            # VARGOTTAMA
-            # =========================
-            vargottama = check_vargottama(
-                longitude_value,
-                sign_no
-            )
-
-            results.append({
-                "planet": planet_name,
+            # =====================================
+            # STORE DATA
+            # =====================================
+            planetary_data[planet_name] = {
 
                 "sign_no": sign_no,
 
                 "sign": sign_name,
 
-                "longitude": round(longitude_value, 6),
+                "longitude": round(
+                    longitude_value,
+                    6
+                ),
 
-                "degree_in_sign": round(degree_in_sign, 6),
+                "degree_in_sign": round(
+                    degree_in_sign,
+                    6
+                ),
 
-                "final_degree": decimal_to_dms(
+                "final_degree": format_degree(
                     degree_in_sign
                 ),
 
-                "nakshatra": nakshatra,
+                "house": house,
 
                 "retrograde": retrograde,
 
                 "combust": combust,
 
-                "vargottama": vargottama,
-
-                "altitude": round(latitude_value, 6),
-
                 "meta_data": {
-                    "planet_speed": round(speed, 6),
-                    "distance_au": round(distance, 6),
-                    "raw_longitude": round(longitude_value, 6)
-                }
-            })
 
-        # =========================
-        # FINAL RESPONSE
-        # =========================
+                    "planet_speed": round(
+                        speed,
+                        6
+                    ),
+
+                    "distance_au": round(
+                        distance_au,
+                        6
+                    )
+                }
+            }
+
+        # =====================================
+        # KETU
+        # =====================================
+        rahu_longitude = planetary_data["Rahu"]["longitude"]
+
+        ketu_longitude = (
+            rahu_longitude + 180
+        ) % 360
+
+        ketu_sign_no = int(
+            ketu_longitude / 30
+        ) + 1
+
+        planetary_data["Ketu"] = {
+
+            "sign_no": ketu_sign_no,
+
+            "sign": SIGNS[ketu_sign_no - 1],
+
+            "longitude": round(
+                ketu_longitude,
+                6
+            ),
+
+            "degree_in_sign": round(
+                ketu_longitude % 30,
+                6
+            ),
+
+            "final_degree": format_degree(
+                ketu_longitude % 30
+            ),
+
+            "house": get_house(
+                ketu_longitude,
+                ascendant_longitude
+            ),
+
+            "retrograde": planetary_data["Rahu"]["retrograde"],
+
+            "combust": False
+        }
+
+        # =====================================
+        # RESPONSE
+        # =====================================
         return {
 
             "status": "success",
 
             "birth_details": {
+
                 "date_of_birth": dob,
-                "birth_time": tob
+
+                "birth_time": birth_time,
+
+                "timezone": timezone
             },
 
             "location": {
+
                 "latitude": latitude,
+
                 "longitude": longitude
             },
 
-            "current_local_time": datetime.now().strftime(
-                "%Y-%m-%d %I:%M:%S %p"
-            ),
-
-            "sunrise": str(sunrise),
-
-            "sunset": str(sunset),
-
-            "atmospheric_pressure_hPa": 1013.25,
-
             "ascendant": {
+
                 "sign_no": asc_sign_no,
+
                 "sign": asc_sign,
-                "degree": round(asc_longitude, 6)
+
+                "longitude": round(
+                    ascendant_longitude,
+                    6
+                )
             },
 
-            "planetary_data": results
+            "meta": {
+
+                "julian_day": round(
+                    jd,
+                    6
+                ),
+
+                "ayanamsa": round(
+                    swe.get_ayanamsa_ut(jd),
+                    6
+                )
+            },
+
+            "planetary_data": planetary_data
         }
 
     except Exception as e:
@@ -331,3 +419,18 @@ def planetary_positions(
             status_code=500,
             detail=str(e)
         )
+
+
+# =====================================
+# RUN SERVER
+# =====================================
+if __name__ == "__main__":
+
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host="127.0.0.1",
+        port=8001,
+        reload=True
+    )
