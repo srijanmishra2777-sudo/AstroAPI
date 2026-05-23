@@ -62,3 +62,52 @@ def calculate_planets(jd, asc_sign_no):
         })
 
     return planets_data
+def calculate_house(sign_no, asc_sign_no):
+    house = sign_no - asc_sign_no + 1
+
+    if house <= 0:
+        house += 12
+
+    return house
+
+# Ascendant Sign Number
+asc_sign_no = int(ascendant_longitude / 30) + 1
+
+planetary_data = []
+
+for planet_name, planet_id in PLANETS.items():
+
+    result = swe.calc_ut(
+        jd,
+        planet_id,
+        swe.FLG_SIDEREAL | swe.FLG_SPEED
+    )
+
+    planet_data = result[0]
+
+    longitude = planet_data[0]
+
+    speed = planet_data[3]
+
+    sign_no = int(longitude / 30) + 1
+
+    sign_name = SIGNS[sign_no - 1]
+
+    degree_in_sign = longitude % 30
+
+    # House Calculation
+    house_no = calculate_house(
+        sign_no,
+        asc_sign_no
+    )
+
+    planetary_data.append({
+        "planet": planet_name,
+        "sign_no": sign_no,
+        "sign": sign_name,
+        "degree_in_sign": round(degree_in_sign, 2),
+        "house": house_no,
+        "longitude": round(longitude, 6),
+        "retrograde": speed < 0,
+        "planet_speed": round(speed, 6)
+    })
