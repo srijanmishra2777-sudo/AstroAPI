@@ -4,6 +4,8 @@ from datetime import datetime
 import swisseph as swe
 import pytz
 from kundli.north_chart import generate_north_indian_chart
+from kundli.navamsha import calculate_navamsha
+from kundli.navamsha_chart import generate_navamsha_chart
 # =========================================================
 # FASTAPI APP
 # =========================================================
@@ -341,7 +343,24 @@ def get_kundali(
         asc_sign_no, asc_sign_name, asc_degree = get_sign(
             ascendant_longitude
         )
+                # =========================================
+        # HOUSE RASHI MAP
+        # =========================================
 
+        house_rashi_map = {}
+
+        for house in range(1, 13):
+
+            rashi_no = (
+                (asc_sign_no + house - 2) % 12
+            ) + 1
+
+            house_rashi_map[house] = {
+
+                "sign_no": rashi_no,
+
+                "sign_name": SIGNS[rashi_no - 1]
+            }
         # =========================================================
         # SUNRISE / SUNSET
         # =========================================================
@@ -516,7 +535,9 @@ def get_kundali(
 
             "planetary_data": planetary_data,
 
-            "kundli_chart": kundli_chart
+        "kundli_chart": kundli_chart,
+
+"house_rashi_map": house_rashi_map
         }
 
     except Exception as e:
@@ -530,19 +551,63 @@ def get_kundali(
 # =========================================================
 # SVG API
 # =========================================================
+# =========================================================
+# SVG API
+# =========================================================
+
+# @app.get("/api/v1/kundli/svg")
+# def get_kundli_svg(
+
+#     dob: str,
+
+#     birth_time: str,
+
+#     latitude: float,
+
+#     longitude: float,
+
+#     timezone: str = "Asia/Kolkata"
+# ):
+
+#     result = get_kundali(
+#         dob,
+#         birth_time,
+#         latitude,
+#         longitude,
+#         timezone
+#     )
+
+#     planets = result["planetary_data"]
+
+#     svg_chart = generate_north_indian_chart(
+#         planets,
+#         result["house_rashi_map"]
+#     )
+
+#     return Response(
+#         content=svg_chart,
+#         media_type="image/svg+xml"
+#     )
+
+# 
+
+
+# =========================================================
+# SVG API
+# =========================================================
+# =========================================================
+# SVG API
+# =========================================================
 
 @app.get("/api/v1/kundli/svg")
 def get_kundli_svg(
 
     dob: str,
-
     birth_time: str,
-
     latitude: float,
-
     longitude: float,
-
     timezone: str = "Asia/Kolkata"
+
 ):
 
     result = get_kundali(
@@ -553,10 +618,9 @@ def get_kundli_svg(
         timezone
     )
 
-    planets = result["planetary_data"]
-
     svg_chart = generate_north_indian_chart(
-        planets
+        result["planetary_data"],
+        result["house_rashi_map"]
     )
 
     return Response(
@@ -564,14 +628,82 @@ def get_kundli_svg(
         media_type="image/svg+xml"
     )
 
+# Add this new endpoint for Navamsha data
+@app.get("/api/v1/navamsha")
+def get_navamsha(
+    dob: str = Query(..., description="Date of Birth DD-MM-YYYY"),
+    birth_time: str = Query(..., description="Birth Time HH:MM AM/PM"),
+    latitude: float = Query(..., description="Latitude"),
+    longitude: float = Query(..., description="Longitude"),
+    timezone: str = Query(default="Asia/Kolkata", description="Timezone")
+):
+    """
+    Get Navamsha (D9) divisional chart data
+    """
+    try:
+        # First get the basic kundali data
+        kundali = get_kundali(dob, birth_time, latitude, longitude, timezone)
+        
+        if kundali.get("status") == "error":
+            return kundali
+        
+        # Calculate Navamsha
+        navamsha = calculate_navamsha(
+            planets=kundali["planetary_data"],
+            ascendant_degree=kundali["ascendant"]["degree"]
+        )
+        
+        return {
+            "status": "success",
+            "birth_details": kundali["birth_details"],
+            "navamsha_ascendant": navamsha["navamsha_ascendant"],
+            "navamsha_planets": navamsha["navamsha_planets"],
+            "interpretation": {
+                "purpose": "Navamsha (D9) chart represents marriage, dharma, and fortune",
+                "significance": "It shows the strength of planets and their results in later life"
+            }
+        }
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
-# =========================================================
-# ROOT API
-# =========================================================
-
-@app.get("/")
-def root():
-
-    return {
-        "message": "Advanced Kundli API Running Successfully"
-    }
+# Add this endpoint for Navamsha SVG chart
+@app.get("/api/v1/navamsha/svg")
+def get_navamsha_svg(
+    dob: str = Query(..., description="Date of Birth DD-MM-YYYY"),
+    birth_time: str = Query(..., description="Birth Time HH:MM AM/PM"),
+    latitude: float = Query(..., description="Latitude"),
+    longitude: float = Query(..., description="Longitude"),
+    timezone: str = Query(default="Asia/Kolkata", description="Timezone")
+):
+    """
+    Generate Navamsha (D9) chart as SVG image
+    """
+    try:
+        # Get kundali data
+        kundali = get_kundali(dob, birth_time, latitude, longitude, timezone)
+        
+        if kundali.get("status") == "error":
+            return Response(
+                content=f'<svg><text>Error: {kundali.get("message")}</text></svg>',
+                media_type="image/svg+xml",
+                status_code=400
+            )
+        
+        # Calculate Navamsha
+        navamsha = calculate_navamsha(
+            planets=kundali["planetary_data"],
+            ascendant_degree=kundali["ascendant"]["degree"]
+        )
+        
+        # Generate Navamsha chart
+        svg_chart = generate_navamsha_chart(navamsha, navamsha["navamsha_ascendant"])
+        
+        return Response(content=svg_chart, media_type="image/svg+xml")
+        
+    except Exception as e:
+        return Response(
+            content=f'<svg><text>Error: {str(e)}</text></svg>',
+            media_type="image/svg+xml",
+            status_code=500
+        )

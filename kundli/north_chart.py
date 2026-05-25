@@ -1,17 +1,32 @@
-def generate_north_indian_chart(planets):
+SIGNS = [
+    "Ar",
+    "Ta",
+    "Ge",
+    "Cn",
+    "Le",
+    "Vi",
+    "Li",
+    "Sc",
+    "Sg",
+    "Cp",
+    "Aq",
+    "Pi"
+]
 
-    # =========================
-    # HOUSE STORAGE
-    # =========================
+
+def generate_north_indian_chart(
+    planets,
+    house_rashi_map
+):
+
+    # =========================================
+    # STORE PLANETS HOUSEWISE
+    # =========================================
 
     house_data = {}
 
     for i in range(1, 13):
         house_data[i] = []
-
-    # =========================
-    # STORE PLANETS
-    # =========================
 
     for planet in planets:
 
@@ -22,16 +37,15 @@ def generate_north_indian_chart(planets):
             f'{round(planet["degree_in_sign"], 1)}°'
         )
 
-        if house in house_data:
-            house_data[house].append(text)
+        house_data[house].append(text)
 
-    # =========================
+    # =========================================
     # HOUSE POSITIONS
-    # =========================
+    # =========================================
 
     house_positions = {
 
-        1:  (600, 170),
+        1:  (600, 180),
 
         2:  (380, 280),
         3:  (200, 450),
@@ -52,9 +66,9 @@ def generate_north_indian_chart(planets):
         12: (820, 280)
     }
 
-    # =========================
+    # =========================================
     # SVG START
-    # =========================
+    # =========================================
 
     svg = """
 <svg width="1200" height="1200"
@@ -93,54 +107,6 @@ fill="none"
 stroke="black"
 stroke-width="4"/>
 
-<!-- TOP LEFT TRIANGLE -->
-
-<line x1="100" y1="100"
-      x2="600" y2="100"
-      stroke="black"
-      stroke-width="3"/>
-
-<line x1="100" y1="100"
-      x2="100" y2="600"
-      stroke="black"
-      stroke-width="3"/>
-
-<!-- TOP RIGHT TRIANGLE -->
-
-<line x1="600" y1="100"
-      x2="1100" y2="100"
-      stroke="black"
-      stroke-width="3"/>
-
-<line x1="1100" y1="100"
-      x2="1100" y2="600"
-      stroke="black"
-      stroke-width="3"/>
-
-<!-- BOTTOM RIGHT TRIANGLE -->
-
-<line x1="1100" y1="600"
-      x2="1100" y2="1100"
-      stroke="black"
-      stroke-width="3"/>
-
-<line x1="600" y1="1100"
-      x2="1100" y2="1100"
-      stroke="black"
-      stroke-width="3"/>
-
-<!-- BOTTOM LEFT TRIANGLE -->
-
-<line x1="100" y1="600"
-      x2="100" y2="1100"
-      stroke="black"
-      stroke-width="3"/>
-
-<line x1="100" y1="1100"
-      x2="600" y2="1100"
-      stroke="black"
-      stroke-width="3"/>
-
 <!-- TITLE -->
 
 <text x="600"
@@ -152,47 +118,70 @@ North Indian Kundli
 </text>
 """
 
-    # =========================
+    # =========================================
     # DRAW HOUSES
-    # =========================
+    # =========================================
 
     for house, position in house_positions.items():
 
         x = position[0]
         y = position[1]
 
-        # HOUSE NUMBER
+        rashi = house_rashi_map[house]["sign_no"]
+
+        rashi_text = SIGNS[rashi - 1]
+
+        # =====================================
+        # RASHI NUMBER
+        # =====================================
 
         svg += f"""
 <text x="{x}"
       y="{y}"
-      font-size="28"
+      font-size="30"
       text-anchor="middle"
-      font-weight="bold">
-{house}
+      font-weight="bold"
+      fill="darkred">
+{rashi}
 </text>
 """
 
-        yy = y + 35
+        # =====================================
+        # RASHI NAME
+        # =====================================
 
+        svg += f"""
+<text x="{x}"
+      y="{y + 28}"
+      font-size="16"
+      text-anchor="middle"
+      fill="blue">
+{rashi_text}
+</text>
+"""
+
+        # =====================================
         # PLANETS
+        # =====================================
+
+        yy = y + 60
 
         for item in house_data[house]:
 
             svg += f"""
 <text x="{x}"
       y="{yy}"
-      font-size="16"
+      font-size="15"
       text-anchor="middle">
 {item}
 </text>
 """
 
-            yy += 24
+            yy += 22
 
-    # =========================
+    # =========================================
     # SVG END
-    # =========================
+    # =========================================
 
     svg += "</svg>"
 
