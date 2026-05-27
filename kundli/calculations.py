@@ -1,5 +1,9 @@
 import swisseph as swe
 
+# ==========================
+# SIGNS
+# ==========================
+
 SIGNS = [
     "Aries",
     "Taurus",
@@ -15,6 +19,10 @@ SIGNS = [
     "Pisces"
 ]
 
+# ==========================
+# PLANETS
+# ==========================
+
 PLANETS = {
     "Sun": swe.SUN,
     "Moon": swe.MOON,
@@ -27,9 +35,32 @@ PLANETS = {
 }
 
 
-def calculate_planets(jd, asc_sign_no):
+# ==========================
+# HOUSE CALCULATION
+# ==========================
 
-    planets_data = []
+def calculate_house(
+    sign_no,
+    lagna_sign_no
+):
+
+    house = (
+        (sign_no - lagna_sign_no) % 12
+    ) + 1
+
+    return house
+
+
+# ==========================
+# PLANET POSITION CALCULATION
+# ==========================
+
+def calculate_planets(
+    jd,
+    lagna_sign_no
+):
+
+    planetary_data = []
 
     for planet_name, planet_id in PLANETS.items():
 
@@ -39,75 +70,129 @@ def calculate_planets(jd, asc_sign_no):
             swe.FLG_SIDEREAL | swe.FLG_SPEED
         )
 
-        longitude = result[0][0]
+        data = result[0]
 
-        sign_no = int(longitude / 30) + 1
+        longitude = data[0]
 
-        sign_name = SIGNS[sign_no - 1]
+        speed = data[3]
 
-        degree_in_sign = longitude % 30
+        sign_no = int(
+            longitude / 30
+        ) + 1
 
-        house = ((sign_no - asc_sign_no) % 12) + 1
+        sign_name = SIGNS[
+            sign_no - 1
+        ]
 
-        retrograde = result[0][3] < 0
+        degree_in_sign = (
+            longitude % 30
+        )
 
-        planets_data.append({
-            "planet": planet_name,
-            "longitude": round(longitude, 6),
-            "sign_no": sign_no,
-            "sign": sign_name,
-            "degree_in_sign": round(degree_in_sign, 6),
-            "house": int(house),
-            "retrograde": retrograde
+        house_no = calculate_house(
+            sign_no,
+            lagna_sign_no
+        )
+
+        planetary_data.append({
+
+            "planet":
+            planet_name,
+
+            "longitude":
+            round(
+                longitude,
+                6
+            ),
+
+            "sign_no":
+            sign_no,
+
+            "sign":
+            sign_name,
+
+            "degree_in_sign":
+            round(
+                degree_in_sign,
+                2
+            ),
+
+            "house":
+            house_no,
+
+            "retrograde":
+            speed < 0,
+
+            "planet_speed":
+            round(
+                speed,
+                6
+            )
+
         })
 
-    return planets_data
-def calculate_house(sign_no, asc_sign_no):
-    house = sign_no - asc_sign_no + 1
+    return planetary_data
 
-    if house <= 0:
-        house += 12
 
-    return house
+# ==========================
+# CHANDRA KUNDLI
+# ==========================
 
-# Ascendant Sign Number
-asc_sign_no = int(ascendant_longitude / 30) + 1
+def generate_chandra_chart(
+    planetary_data
+):
 
-planetary_data = []
+    moon = next(
 
-for planet_name, planet_id in PLANETS.items():
+        p for p in planetary_data
 
-    result = swe.calc_ut(
-        jd,
-        planet_id,
-        swe.FLG_SIDEREAL | swe.FLG_SPEED
+        if p["planet"] == "Moon"
+
     )
 
-    planet_data = result[0]
+    moon_sign = moon["sign_no"]
 
-    longitude = planet_data[0]
+    chandra_data = []
 
-    speed = planet_data[3]
+    for planet in planetary_data:
 
-    sign_no = int(longitude / 30) + 1
+        house = calculate_house(
 
-    sign_name = SIGNS[sign_no - 1]
+            planet["sign_no"],
+            moon_sign
 
-    degree_in_sign = longitude % 30
+        )
 
-    # House Calculation
-    house_no = calculate_house(
-        sign_no,
-        asc_sign_no
-    )
+        chandra_data.append({
 
-    planetary_data.append({
-        "planet": planet_name,
-        "sign_no": sign_no,
-        "sign": sign_name,
-        "degree_in_sign": round(degree_in_sign, 2),
-        "house": house_no,
-        "longitude": round(longitude, 6),
-        "retrograde": speed < 0,
-        "planet_speed": round(speed, 6)
-    })
+            "planet":
+            planet["planet"],
+
+            "moon_house":
+            house,
+
+            "sign":
+            planet["sign"],
+
+            "degree":
+            planet[
+                "degree_in_sign"
+            ],
+
+            "retrograde":
+            planet[
+                "retrograde"
+            ]
+
+        })
+
+    return {
+
+        "moon_lagna":
+        SIGNS[
+            moon_sign - 1
+        ],
+
+        "planetary_positions":
+        chandra_data
+
+    }
